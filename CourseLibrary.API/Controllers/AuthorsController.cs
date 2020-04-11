@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CourseLibrary.API.Controllers
 {
+    [Route("api/[controller]")]
     [ApiController]
-    [Route("api/authors")]
     public class AuthorsController : ControllerBase
     {
         private readonly ICourseLibraryRepository _courseLibraryRepository;
