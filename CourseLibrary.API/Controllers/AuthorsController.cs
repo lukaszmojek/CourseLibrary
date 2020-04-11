@@ -5,6 +5,7 @@ using System.Reflection.Metadata.Ecma335;
 using AutoMapper;
 using CourseLibrary.API.Helpers;
 using CourseLibrary.API.Models;
+using CourseLibrary.API.ResourceParameters;
 using CourseLibrary.API.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -26,9 +27,10 @@ namespace CourseLibrary.API.Controllers
         }
 
         [HttpGet]
-        public ActionResult<IEnumerable<AuthorDto>> GetAuthors()
+        [HttpHead]
+        public ActionResult<IEnumerable<AuthorDto>> GetAuthors([FromQuery] AuthorsResourceParameters authorsResourceParameters)
         {
-            var authorsFromRepository = _courseLibraryRepository.GetAuthors();
+            var authorsFromRepository = _courseLibraryRepository.GetAuthors(authorsResourceParameters);
             return Ok(_mapper.Map<IEnumerable<AuthorDto>>(authorsFromRepository));
         }
 
