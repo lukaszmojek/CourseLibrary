@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json.Serialization;
 
 namespace CourseLibrary.API
 {
@@ -29,27 +30,36 @@ namespace CourseLibrary.API
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddControllers(setupAction => { setupAction.ReturnHttpNotAcceptable = true; })
+            services.AddControllers(setupAction =>
+                {
+                    setupAction.ReturnHttpNotAcceptable = true;
+                })
+                .AddNewtonsoftJson(setupAction =>
+                {
+                    setupAction.SerializerSettings.ContractResolver =
+                        new CamelCasePropertyNamesContractResolver();
+                })
                 .AddXmlDataContractSerializerFormatters()
                 .ConfigureApiBehaviorOptions(setupAction =>
                 {
                     setupAction.InvalidModelStateResponseFactory = context =>
                     {
-                        var problemDrtailsFactory = context.HttpContext.RequestServices
+                        var problemDetailsFactory = context.HttpContext.RequestServices
                             .GetRequiredService<ProblemDetailsFactory>();
 
-                        var problemDetails = problemDrtailsFactory.CreateValidationProblemDetails(
+                        var problemDetails = problemDetailsFactory.CreateValidationProblemDetails(
                             context.HttpContext,
                             context.ModelState);
 
                         problemDetails.Detail = "See the error field for details.";
                         problemDetails.Instance = context.HttpContext.Request.Path;
 
+                        //TODO: Investigate, why context from Controller after casting to ActionExecutingContext is null
                         var actionExecutingContext = context as Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext;
 
-                        if (context.ModelState.ErrorCount > 0
-                            && actionExecutingContext?.ActionArguments.Count ==
-                            context.ActionDescriptor.Parameters.Count)
+                        if ((context.ModelState.ErrorCount > 0)
+                            && (actionExecutingContext?.ActionArguments.Count ==
+                            context.ActionDescriptor.Parameters.Count))
                         {
                             problemDetails.Type = "Placeholder for link, where user could get info, how to resolve their issue.";
                             problemDetails.Status = StatusCodes.Status422UnprocessableEntity;
