@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Reflection.Metadata.Ecma335;
+using System.Text.Json;
 using AutoMapper;
 using CourseLibrary.API.Helpers;
 using CourseLibrary.API.Models;
@@ -27,12 +28,54 @@ namespace CourseLibrary.API.Controllers
                       throw new ArgumentNullException(nameof(mapper));
         }
 
-        [HttpGet]
+        [HttpGet(Name = "GetAuthors")]
         [HttpHead]
         public ActionResult<IEnumerable<AuthorDto>> GetAuthors([FromQuery] AuthorsResourceParameters authorsResourceParameters)
         {
             var authorsFromRepository = _courseLibraryRepository.GetAuthors(authorsResourceParameters);
+
+            var previousPageLink = authorsFromRepository.HasPrevious ?
+                CreateAuthorsResourceUri(authorsResourceParameters, ResourceUriType.PreviousPage) : 
+                null;
+
+            var nextPageLink = authorsFromRepository.HasNext ?
+                CreateAuthorsResourceUri(authorsResourceParameters, ResourceUriType.NextPage) :
+                null;
+
+            var paginationMetadata = new
+            {
+                totalCount = authorsFromRepository.TotalCount,
+                pageSize = authorsFromRepository.PageSize,
+                currentPage = authorsFromRepository.CurrentPage,
+                totalPages = authorsFromRepository.TotalPages,
+                previousPageLink,
+                nextPageLink
+            };
+
+            Response.Headers.Add("X-Pagination", JsonSerializer.Serialize(paginationMetadata));
+
             return Ok(_mapper.Map<IEnumerable<AuthorDto>>(authorsFromRepository));
+        }
+
+        private string CreateAuthorsResourceUri(
+            AuthorsResourceParameters authorsResourceParameters,
+            ResourceUriType type)
+        {
+            var pageNumber = type switch
+            {
+                ResourceUriType.PreviousPage => authorsResourceParameters.PageNumber - 1,
+                ResourceUriType.NextPage => authorsResourceParameters.PageNumber + 1,
+                _ => authorsResourceParameters.PageNumber
+            };
+
+            return Url.Link("GetAuthors",
+                new
+                {
+                    pageNumber,
+                    pageSize = authorsResourceParameters.PageSize,
+                    mainCategory = authorsResourceParameters.MainCategory,
+                    searchQuery = authorsResourceParameters.SearchQuery
+                });
         }
 
         [HttpGet("{authorId:guid}", Name = "GetAuthor")]
