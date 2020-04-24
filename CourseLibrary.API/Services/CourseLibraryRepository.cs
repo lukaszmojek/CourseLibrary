@@ -4,18 +4,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CourseLibrary.API.ResourceParameters;
-using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using CourseLibrary.API.Helpers;
+using CourseLibrary.API.Models;
 
 namespace CourseLibrary.API.Services
 {
     public class CourseLibraryRepository : ICourseLibraryRepository, IDisposable
     {
         private readonly CourseLibraryContext _context;
+        private readonly IPropertyMappingService _propertyMappingService;
 
-        public CourseLibraryRepository(CourseLibraryContext context )
+        public CourseLibraryRepository(CourseLibraryContext context, IPropertyMappingService propertyMappingService)
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _context = context 
+                ?? throw new ArgumentNullException(nameof(context));
+            _propertyMappingService = propertyMappingService
+                ?? throw new ArgumentNullException(nameof(propertyMappingService));
         }
 
         public void AddCourse(Guid authorId, Course course)
@@ -149,7 +153,16 @@ namespace CourseLibrary.API.Services
                                           || a.LastName.Contains(searchQuery));
             }
 
-            return PagedList<Author>.Create(collection, authorsResourceParameters.PageNumber, authorsResourceParameters.PageSize);
+            if (!string.IsNullOrWhiteSpace(authorsResourceParameters.OrderBy))
+            {
+                var authorPropertyMappingDictinary = _propertyMappingService.GetPropertyMapping<AuthorDto, Author>();
+
+                collection = collection.ApplySorting(authorsResourceParameters.OrderBy, authorPropertyMappingDictinary);
+            }
+
+            return PagedList<Author>.Create(collection, 
+                authorsResourceParameters.PageNumber, 
+                authorsResourceParameters.PageSize);
         }
 
         public IEnumerable<Author> GetAuthors(IEnumerable<Guid> authorIds)
