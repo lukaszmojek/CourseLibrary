@@ -48,10 +48,11 @@ namespace CourseLibrary.API.Helpers
 
                 foreach (var propertyInfo in propertyInfos)
                 {
-                    var propertyValue = propertyInfo.GetValue(sourceObject); 
-                    //dataShapedObject.TryAdd(propertyInfo.Name, propertyValue); //TODO: Which of these is better? 
-                    ((IDictionary<string, object>)dataShapedObject).Add(propertyInfo.Name, propertyValue);
-
+                    var propertyValue = propertyInfo.GetValue(sourceObject);
+                    if (!dataShapedObject.TryAdd(propertyInfo.Name, propertyValue))
+                    {
+                        throw new Exception($"Couldn't add property {propertyInfo.Name} with value {propertyValue}");
+                    } 
                 }
 
                 expandoObjects.Add(dataShapedObject);

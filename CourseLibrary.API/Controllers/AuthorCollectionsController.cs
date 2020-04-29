@@ -22,9 +22,9 @@ namespace CourseLibrary.API.Controllers
         public AuthorCollectionsController(ICourseLibraryRepository courseLibraryRepository, IMapper mapper)
         {
             _courseLibraryRepository = courseLibraryRepository ??
-                                       throw new ArgumentNullException(nameof(courseLibraryRepository));
+                throw new ArgumentNullException(nameof(courseLibraryRepository));
             _mapper = mapper ??
-                      throw new ArgumentNullException(nameof(mapper));
+                throw new ArgumentNullException(nameof(mapper));
         }
 
         [HttpGet("({ids})", Name = "GetAuthorCollection")]
