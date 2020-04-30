@@ -19,7 +19,7 @@ namespace CourseLibrary.API.Services
 
             foreach (var field in splittedFields)
             {
-                var propertyName = fields.Trim();
+                var propertyName = field.Trim();
 
                 var propertyInfo = typeof(T)
                     .GetProperty(name: propertyName,
