@@ -12,6 +12,7 @@ using CourseLibrary.API.Models;
 using CourseLibrary.API.ResourceParameters;
 using CourseLibrary.API.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace CourseLibrary.API.Controllers
 {
@@ -39,8 +40,14 @@ namespace CourseLibrary.API.Controllers
         [HttpGet(Name = "GetAuthors")]
         [HttpHead]
         public IActionResult GetAuthors(
-            [FromQuery] AuthorsResourceParameters authorsResourceParameters)
+            [FromQuery] AuthorsResourceParameters authorsResourceParameters,
+            [FromHeader(Name = "Accept")] string mediaType)
         {
+            if (!MediaTypeHeaderValue.TryParse(mediaType, out MediaTypeHeaderValue parsedMediaType))
+            {
+                return BadRequest();
+            }
+
             if (!_propertyMappingService.ValidMappingExistsFor<AuthorDto, Author>
                 (authorsResourceParameters.OrderBy))
             {
@@ -64,31 +71,37 @@ namespace CourseLibrary.API.Controllers
 
             Response.Headers.Add("X-Pagination", JsonSerializer.Serialize(paginationMetadata));
 
-            var links = CreateLinksForAuthors(
-                authorsResourceParameters, 
-                authorsFromRepository.HasNext, 
+            var shapedAuthors = 
+                _mapper
+                    .Map<IEnumerable<AuthorDto>>(authorsFromRepository)
+                    .ShapeData(authorsResourceParameters.Fields);
+
+            if (parsedMediaType.MediaType == "application/vnd.shaggy.hateoas+json")
+            {
+                var links = CreateLinksForAuthors(
+                authorsResourceParameters,
+                authorsFromRepository.HasNext,
                 authorsFromRepository.HasPrevious);
 
-            var shapedAuthors = _mapper
-                .Map<IEnumerable<AuthorDto>>(authorsFromRepository)
-                .ShapeData(authorsResourceParameters.Fields);
+                var shapedAuthorsWithLinks = shapedAuthors.Select(author =>
+                {
+                    var authorAsDictionary = author as IDictionary<string, object>;
+                    var authorLinks = CreateLinksForAuthor((Guid)authorAsDictionary["Id"], null);
+                    authorAsDictionary.Add("links", authorLinks);
 
-            var shapedAuthorsWithLinks = shapedAuthors.Select(author =>
-            {
-                var authorAsDictionary = author as IDictionary<string, object>;
-                var authorLinks = CreateLinksForAuthor((Guid)authorAsDictionary["Id"], null);
-                authorAsDictionary.Add("links", authorLinks);
-                
-                return authorAsDictionary;
-            });
+                    return authorAsDictionary;
+                });
 
-            var linkedCollectionResource = new
-            {
-                value = shapedAuthorsWithLinks,
-                links
-            };
+                var linkedCollectionResource = new
+                {
+                    value = shapedAuthorsWithLinks,
+                    links
+                };
 
-            return Ok(linkedCollectionResource);
+                return Ok(linkedCollectionResource);
+            }
+
+            return Ok(authorsFromRepository);
         }
 
         private string CreateAuthorsResourceUri(
@@ -116,8 +129,14 @@ namespace CourseLibrary.API.Controllers
         }
 
         [HttpGet("{authorId:guid}", Name = "GetAuthor")]
-        public IActionResult GetAuthor(Guid authorId, string fields)
+        public IActionResult GetAuthor(Guid authorId, string fields,
+            [FromHeader(Name = "Accept")] string mediaType)
         {
+            if (!MediaTypeHeaderValue.TryParse(mediaType, out MediaTypeHeaderValue parsedMediaType))
+            {
+                return BadRequest();
+            }
+
             if (!_propertyCheckerService.TypeHasProperties<AuthorDto>(fields))
             {
                 return BadRequest();
@@ -131,17 +150,22 @@ namespace CourseLibrary.API.Controllers
 
             }
 
-            var links = CreateLinksForAuthor(authorId, fields);
+            if (parsedMediaType.MediaType == "application/vnd.shaggy.hateoas+json")
+            {
+                var links = CreateLinksForAuthor(authorId, fields);
 
-            var linkedResourceToReturn =
-                _mapper
-                    .Map<AuthorDto>(author)
-                    .ShapeData(fields)
-                    as IDictionary<string, object>;
+                var linkedResourceToReturn =
+                    _mapper
+                        .Map<AuthorDto>(author)
+                        .ShapeData(fields)
+                        as IDictionary<string, object>;
 
-            linkedResourceToReturn.Add("links", links);
+                linkedResourceToReturn.Add("links", links);
 
-            return Ok(linkedResourceToReturn);
+                return Ok(linkedResourceToReturn);
+            }
+
+            return Ok(_mapper.Map<AuthorDto>(author).ShapeData(fields));
         }
 
         [HttpPost(Name = "CreateAuthor")]
