@@ -85,9 +85,9 @@ namespace CourseLibrary.API.Controllers
 
             var shapedAuthors =
                 (primaryMediaType == "vnd.shaggy.author.full")
-                ? MapAndShapeResource<IEnumerable<Author>, IEnumerable<AuthorFullDto>>
+                ? MapAndShapeResource<PagedList<Author>, AuthorFullDto>
                     (authorsFromRepository, authorsResourceParameters.Fields)
-                : MapAndShapeResource<IEnumerable<Author>, IEnumerable<AuthorDto>>
+                : MapAndShapeResource<PagedList<Author>, AuthorDto>
                     (authorsFromRepository, authorsResourceParameters.Fields);
 
             if (includeLinks)
@@ -233,9 +233,9 @@ namespace CourseLibrary.API.Controllers
                     : parsedMediaType.SubTypeWithoutSuffix;
 
         private IEnumerable<ExpandoObject> MapAndShapeResource<TCurrentType, TMappingType>
-            (TCurrentType resource, string fields) where TMappingType : IEnumerable
+            (TCurrentType resource, string fields)
             => _mapper
-                    .Map<TMappingType>(resource)
+                    .Map<IEnumerable<TMappingType>>(resource)
                     .ShapeData(fields);
 
         private TCastingType MapShapeAndCastResource<TCurrentType, TMappingType, TCastingType>
