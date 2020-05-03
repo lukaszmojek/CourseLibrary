@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Specialized;
+using System.Dynamic;
 using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Text.Json;
 using AutoMapper;
 using CourseLibrary.API.Entities;
@@ -12,6 +11,7 @@ using CourseLibrary.API.Models;
 using CourseLibrary.API.ResourceParameters;
 using CourseLibrary.API.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 
 namespace CourseLibrary.API.Controllers
@@ -37,6 +37,12 @@ namespace CourseLibrary.API.Controllers
                 throw new ArgumentNullException(nameof(propertyCheckerService));
         }
 
+        [Produces("application/json",
+            "application/vnd.shaggy.hateoas+json",
+            "application/vnd.shaggy.author.full+json",
+            "application/vnd.shaggy.author.full.hateoas+json",
+            "application/vnd.shaggy.author.friendly+json",
+            "application/vnd.shaggy.author.friendly.hateoas+json")]
         [HttpGet(Name = "GetAuthors")]
         [HttpHead]
         public IActionResult GetAuthors(
@@ -71,25 +77,34 @@ namespace CourseLibrary.API.Controllers
 
             Response.Headers.Add("X-Pagination", JsonSerializer.Serialize(paginationMetadata));
 
-            var shapedAuthors = 
-                _mapper
-                    .Map<IEnumerable<AuthorDto>>(authorsFromRepository)
-                    .ShapeData(authorsResourceParameters.Fields);
+            var includeLinks = ShouldLinksBeIncluded(parsedMediaType);
 
-            if (parsedMediaType.MediaType == "application/vnd.shaggy.hateoas+json")
+            IEnumerable<LinkDto> links = new List<LinkDto>();
+
+            var primaryMediaType = GetPrimaryMediaType(includeLinks, parsedMediaType);
+
+            var shapedAuthors =
+                (primaryMediaType == "vnd.shaggy.author.full")
+                ? MapAndShapeResource<IEnumerable<Author>, IEnumerable<AuthorFullDto>>
+                    (authorsFromRepository, authorsResourceParameters.Fields)
+                : MapAndShapeResource<IEnumerable<Author>, IEnumerable<AuthorDto>>
+                    (authorsFromRepository, authorsResourceParameters.Fields);
+
+            if (includeLinks)
             {
-                var links = CreateLinksForAuthors(
-                authorsResourceParameters,
-                authorsFromRepository.HasNext,
-                authorsFromRepository.HasPrevious);
+                links = CreateLinksForAuthors(
+                    authorsResourceParameters,
+                    authorsFromRepository.HasNext,
+                    authorsFromRepository.HasPrevious);
 
                 var shapedAuthorsWithLinks = shapedAuthors.Select(author =>
                 {
                     var authorAsDictionary = author as IDictionary<string, object>;
+
                     var authorLinks = CreateLinksForAuthor((Guid)authorAsDictionary["Id"], null);
                     authorAsDictionary.Add("links", authorLinks);
 
-                    return authorAsDictionary;
+                    return author;
                 });
 
                 var linkedCollectionResource = new
@@ -101,33 +116,15 @@ namespace CourseLibrary.API.Controllers
                 return Ok(linkedCollectionResource);
             }
 
-            return Ok(authorsFromRepository);
+            return Ok(shapedAuthors);
         }
 
-        private string CreateAuthorsResourceUri(
-            AuthorsResourceParameters authorsResourceParameters,
-            ResourceUriType type)
-        {
-            var pageNumber = type switch
-            {
-                ResourceUriType.PreviousPage => authorsResourceParameters.PageNumber - 1,
-                ResourceUriType.NextPage => authorsResourceParameters.PageNumber + 1,
-                ResourceUriType.Current => authorsResourceParameters.PageNumber,
-                _ => authorsResourceParameters.PageNumber
-            };
-
-            return Url.Link("GetAuthors",
-                new
-                {
-                    fields = authorsResourceParameters.Fields,
-                    orderBy = authorsResourceParameters.OrderBy,
-                    pageNumber,
-                    pageSize = authorsResourceParameters.PageSize,
-                    mainCategory = authorsResourceParameters.MainCategory,
-                    searchQuery = authorsResourceParameters.SearchQuery
-                });
-        }
-
+        [Produces("application/json",
+            "application/vnd.shaggy.hateoas+json",
+            "application/vnd.shaggy.author.full+json",
+            "application/vnd.shaggy.author.full.hateoas+json",
+            "application/vnd.shaggy.author.friendly+json",
+            "application/vnd.shaggy.author.friendly.hateoas+json")]
         [HttpGet("{authorId:guid}", Name = "GetAuthor")]
         public IActionResult GetAuthor(Guid authorId, string fields,
             [FromHeader(Name = "Accept")] string mediaType)
@@ -142,36 +139,44 @@ namespace CourseLibrary.API.Controllers
                 return BadRequest();
             }
 
-            var author = _courseLibraryRepository.GetAuthor(authorId);
+            var authorFromRepository = _courseLibraryRepository.GetAuthor(authorId);
 
-            if (author == null)
+            if (authorFromRepository == null)
             {
                 return NotFound();
 
             }
 
-            if (parsedMediaType.MediaType == "application/vnd.shaggy.hateoas+json")
+            var includeLinks = ShouldLinksBeIncluded(parsedMediaType);
+
+            IEnumerable<LinkDto> links = new List<LinkDto>();
+
+            if (includeLinks)
             {
-                var links = CreateLinksForAuthor(authorId, fields);
-
-                var linkedResourceToReturn =
-                    _mapper
-                        .Map<AuthorDto>(author)
-                        .ShapeData(fields)
-                        as IDictionary<string, object>;
-
-                linkedResourceToReturn.Add("links", links);
-
-                return Ok(linkedResourceToReturn);
+                links = CreateLinksForAuthor(authorId, fields);
             }
 
-            return Ok(_mapper.Map<AuthorDto>(author).ShapeData(fields));
+            var primaryMediaType = GetPrimaryMediaType(includeLinks, parsedMediaType);
+
+            var authorToReturn =
+                (primaryMediaType == "vnd.shaggy.author.full")
+                ? MapShapeAndCastResource<Author, AuthorFullDto, IDictionary<string, object>>
+                    (authorFromRepository, fields)
+                : MapShapeAndCastResource<Author, AuthorDto, IDictionary<string, object>>
+                    (authorFromRepository, fields);
+
+            if (includeLinks)
+            {
+                authorToReturn.Add("links", links);
+            }
+
+            return Ok(authorToReturn);
         }
 
         [HttpPost(Name = "CreateAuthor")]
         public ActionResult<AuthorDto> CreateAuthor(AuthorForCreationDto author)
         {
-            var authorEntity = _mapper.Map<Entities.Author>(author);
+            var authorEntity = _mapper.Map<Author>(author);
 
             _courseLibraryRepository.AddAuthor(authorEntity);
             _courseLibraryRepository.Save();
@@ -180,8 +185,10 @@ namespace CourseLibrary.API.Controllers
 
             var links = CreateLinksForAuthor(authorToReturn.Id, null);
 
-            var linkedResourceToReturn = authorToReturn.ShapeData(null)
-                as IDictionary<string, object>;
+            var linkedResourceToReturn = 
+                authorToReturn
+                    .ShapeData(null)
+                    as IDictionary<string, object>;
 
             linkedResourceToReturn.Add("links", links);
 
@@ -189,7 +196,6 @@ namespace CourseLibrary.API.Controllers
                 new { authorId = linkedResourceToReturn["Id"] },
                 linkedResourceToReturn);
         }
-
 
         [HttpOptions]
         public IActionResult GetAuthorsOptions()
@@ -213,6 +219,31 @@ namespace CourseLibrary.API.Controllers
 
             return NoContent();
         }
+
+        private bool ShouldLinksBeIncluded(MediaTypeHeaderValue parsedMediaType)
+            => parsedMediaType
+                    .SubTypeWithoutSuffix
+                    .EndsWith("hateoas", StringComparison.InvariantCultureIgnoreCase);
+
+        private StringSegment GetPrimaryMediaType(bool includeLinks, MediaTypeHeaderValue parsedMediaType)
+            => includeLinks
+                    ? parsedMediaType
+                        .SubTypeWithoutSuffix
+                        .Substring(0, parsedMediaType.SubTypeWithoutSuffix.Length - 8)
+                    : parsedMediaType.SubTypeWithoutSuffix;
+
+        private IEnumerable<ExpandoObject> MapAndShapeResource<TCurrentType, TMappingType>
+            (TCurrentType resource, string fields) where TMappingType : IEnumerable
+            => _mapper
+                    .Map<TMappingType>(resource)
+                    .ShapeData(fields);
+
+        private TCastingType MapShapeAndCastResource<TCurrentType, TMappingType, TCastingType>
+            (TCurrentType resource, string fields) where TCastingType : class
+            => _mapper
+                    .Map<TMappingType>(resource)
+                    .ShapeData(fields)
+                    as TCastingType;
 
         private IEnumerable<LinkDto> CreateLinksForAuthor(Guid authorId, string fields)
         {
@@ -280,6 +311,30 @@ namespace CourseLibrary.API.Controllers
             }
 
             return links;
+        }
+
+        private string CreateAuthorsResourceUri(
+            AuthorsResourceParameters authorsResourceParameters,
+            ResourceUriType type)
+        {
+            var pageNumber = type switch
+            {
+                ResourceUriType.PreviousPage => authorsResourceParameters.PageNumber - 1,
+                ResourceUriType.NextPage => authorsResourceParameters.PageNumber + 1,
+                ResourceUriType.Current => authorsResourceParameters.PageNumber,
+                _ => authorsResourceParameters.PageNumber
+            };
+
+            return Url.Link("GetAuthors",
+                new
+                {
+                    fields = authorsResourceParameters.Fields,
+                    orderBy = authorsResourceParameters.OrderBy,
+                    pageNumber,
+                    pageSize = authorsResourceParameters.PageSize,
+                    mainCategory = authorsResourceParameters.MainCategory,
+                    searchQuery = authorsResourceParameters.SearchQuery
+                });
         }
     }
 }
