@@ -5,6 +5,7 @@ using System.Dynamic;
 using System.Linq;
 using System.Text.Json;
 using AutoMapper;
+using CourseLibrary.API.ActionConstraints;
 using CourseLibrary.API.Entities;
 using CourseLibrary.API.Helpers;
 using CourseLibrary.API.Models;
@@ -174,6 +175,13 @@ namespace CourseLibrary.API.Controllers
         }
 
         [HttpPost(Name = "CreateAuthor")]
+        [RequestHeaderMatchesMediaType("Content-Type",
+            "application/json",
+            "application/vnd.shaggy.authorforcreation+json",
+            "application/vnd.shaggy.authorforcreationwithdateofdeath+json")]
+        [Consumes("application/json",
+            "application/vnd.shaggy.authorforcreation+json",
+            "application/vnd.shaggy.authorforcreationwithdateofdeath+json")]
         public ActionResult<AuthorDto> CreateAuthor(AuthorForCreationDto author)
         {
             var authorEntity = _mapper.Map<Author>(author);
@@ -196,6 +204,34 @@ namespace CourseLibrary.API.Controllers
                 new { authorId = linkedResourceToReturn["Id"] },
                 linkedResourceToReturn);
         }
+
+        [HttpPost(Name = "CreateAuthorWithDateOfDeath")]
+        [RequestHeaderMatchesMediaType("Content-Type",
+            "application/vnd.shaggy.authorforcreationwithdateofdeath+json")]
+        [Consumes("application/vnd.shaggy.authorforcreationwithdateofdeath+json")]
+        public ActionResult<AuthorDto> CreateAuthor(AuthorForCreationWithDateOfDeathDto author)
+        {
+            var authorEntity = _mapper.Map<Author>(author);
+
+            _courseLibraryRepository.AddAuthor(authorEntity);
+            _courseLibraryRepository.Save();
+
+            var authorToReturn = _mapper.Map<AuthorDto>(authorEntity);
+
+            var links = CreateLinksForAuthor(authorToReturn.Id, null);
+
+            var linkedResourceToReturn =
+                authorToReturn
+                    .ShapeData(null)
+                    as IDictionary<string, object>;
+
+            linkedResourceToReturn.Add("links", links);
+
+            return CreatedAtRoute("GetAuthor",
+                new { authorId = linkedResourceToReturn["Id"] },
+                linkedResourceToReturn);
+        }
+
 
         [HttpOptions]
         public IActionResult GetAuthorsOptions()
