@@ -28,7 +28,6 @@ namespace CourseLibrary.API.Controllers
         }
 
         [HttpGet("({ids})", Name = "GetAuthorCollection")]
-        
         public IActionResult GetAuthorCollection(
             [FromRoute]
             [ModelBinder(BinderType = typeof(ArrayModelBinder))] IEnumerable<Guid> ids)
